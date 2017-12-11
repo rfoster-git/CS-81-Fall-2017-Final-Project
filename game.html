@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ryan Foster CS 81 Final Project</title>
+
+    <style>
+        html, body {
+            width:  100%;
+            height: 100%;
+            margin: 0px;
+        }
+
+        canvas {
+            padding: 0;
+            margin: auto;
+            display: block;
+        }
+
+    </style>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script>
+        //images
+        var backgroundImage, playerImage, laserRedImage, enemyShip, laserGreenImage, shieldImage;
+
+        //game settings, re-initialize these at the start of each game
+        var gameRunning = false, gameOver = false;
+        var up, down, left, right, space;
+        var player, playerShots;
+        var enemies, enemyShots;
+        var score;
+
+        //constants
+        var playerRateOfFire = 8;
+        var enemySpawnRate = 80;
+
+        $(window).on("load", function() {
+            backgroundImage = new Image();
+            backgroundImage.src = "background.png";
+
+            playerImage = new Image();
+            playerImage.src = "player.png";
+
+            laserRedImage = new Image();
+            laserRedImage.src = "laserRed.png";
+
+            laserGreenImage = new Image();
+            laserGreenImage.src = "laserGreen.png";
+
+            enemyShip = new Image();
+            enemyShip.src = "enemyShip.png";
+
+            shieldImage = new Image();
+            shieldImage.src = "shield.png";
+
+            //start
+            GameArea.start();
+
+            document.addEventListener("click",processClickInput);
+            document.addEventListener("keydown",processKeyboardInput);
+            document.addEventListener("keyup",processKeyboardInput);
+        });
+
+        var GameArea = {
+            canvas : document.createElement("canvas"),
+            start : function(){
+                this.context = this.canvas.getContext("2d");
+                this.context.canvas.width  = 450;
+                this.context.canvas.height = window.innerHeight;
+                document.body.insertBefore(this.canvas, document.body.childNodes[0]);
+
+                this.frameNumber = 0;
+                this.interval = setInterval(onTimerTick, 33);
+            },
+            createPlayer : function() {
+                player = new Player();
+            }
+        }
+
+        function everyinterval(n) {
+            if ((GameArea.frameNumber / n) % 1 == 0) {return true;}
+            return false;
+        }
+
+        function Player(){
+            this.width = playerImage.width * 0.5;
+            this.height = playerImage.height * 0.5;
+            this.x = GameArea.context.canvas.width / 2 - this.width / 2;
+            this.y = GameArea.context.canvas.height - this.height * 4;
+
+            this.moveAmount = 8;
+
+            this.shieldValue = 1;
+            this.shieldActive = true;
+            this.shieldWidth = shieldImage.width * 0.5;
+            this.shieldHeight = shieldImage.height * 0.5;
+            this.shield_x = this.x - this.shieldWidth / 2 + this.width / 2;
+            this.shield_y = this.y - this.shieldHeight / 2 + this.height / 2;
+
+            this.gotHit = function(){
+                if(this.shieldActive) {
+                    this.shieldValue -= 1;
+
+                    if (this.shieldValue <= 0) {
+                        this.shieldActive = false;
+                    }
+                }
+                else {
+                    //game over
+                    gameRunning = false;
+                    gameOver = true;
+                }
+            }
+
+            this.update = function(){
+                if(left){
+                    this.x -= this.moveAmount;
+                    this.shield_x -= this.moveAmount;
+                }
+                if(right){
+                    this.x += this.moveAmount;
+                    this.shield_x += this.moveAmount;
+                }
+                if(up){
+                    this.y -= this.moveAmount;
+                    this.shield_y -= this.moveAmount;
+                }
+                if(down){
+                    this.y += this.moveAmount;
+                    this.shield_y += this.moveAmount;
+                }
+
+                if(this.x < 0){
+                    this.x = 0;
+                    this.shield_x = this.x - this.shieldWidth / 2 + this.width / 2;
+                }
+                if(this.x > GameArea.context.canvas.width - this.width){
+                    this.x = GameArea.context.canvas.width - this.width;
+                    this.shield_x = this.x - this.shieldWidth / 2 + this.width / 2;
+                }
+                if(this.y < 0){
+                    this.y = 0;
+                    this.shield_y = this.y - this.shieldHeight / 2 + this.height / 2;
+                }
+                if(this.y > GameArea.context.canvas.height - this.height){
+                    this.y = GameArea.context.canvas.height - this.height;
+                    this.shield_y = this.y - this.shieldHeight / 2 + this.height / 2;
+                }
+
+                if(space){
+                    //player rate of fire
+                    if(everyinterval(playerRateOfFire)){
+                        playerShots.push(new PlayerLaser());
+                    }
+                }
+            }
+
+            this.draw = function(){
+                ctx = GameArea.context;
+                if(this.shieldActive) {
+                    ctx.drawImage(shieldImage, this.shield_x, this.shield_y, this.shieldWidth, this.shieldHeight);
+                }
+                ctx.drawImage(playerImage, this.x, this.y, this.width, this.height);
+            }
+        }
+
+        function PlayerLaser(){
+            this.active = true;
+
+            this.width = laserRedImage.width;
+            this.height = laserRedImage.height;
+            this.x = (player.x + player.width / 2) - this.width / 2;
+            this.y = player.y;
+
+            this.speed = 20;
+
+            this.update = function(){
+                this.y -= this.speed;
+
+                //handle player shot going out of bounds
+                if(this.y < 0){
+                    active = false;
+                }
+            }
+
+            this.draw = function(){
+                ctx = GameArea.context;
+                ctx.drawImage(laserRedImage, this.x, this.y, this.width, this.height);
+            }
+        }
+
+        function Enemy(x, y){
+            this.active = true;
+
+            this.x = x;
+            this.y = y;
+
+            this.width = enemyShip.width * 0.5;
+            this.height = enemyShip.height * 0.5;
+
+            this.moveAmount = 1;
+
+            this.health = 5;
+
+            this.gotHit = function(){
+                this.health -= 1;
+
+                if(this.health <= 0){
+                    this.active = false;
+                    score += 100;
+                }
+            }
+
+            this.update = function(){
+                this.y += this.moveAmount;
+
+                //spawn enemy shot
+                if(everyinterval(100)){
+                    enemyShots.push(new enemyLaser(this.x + this.width / 2, this.y - this.height / 2));
+                }
+
+                //handle enemies going out of bounds
+                if(this.y > GameArea.context.canvas.height){
+                    this.active = false;
+                }
+            }
+
+            this.draw = function(){
+                ctx = GameArea.context;
+                ctx.drawImage(enemyShip, this.x, this.y, this.width, this.height);
+            }
+        }
+
+        function enemyLaser(x,y){
+            this.active = true;
+
+            this.width = laserGreenImage.width / 2;
+            this.height = laserGreenImage.height / 2;
+            this.x = x - this.width / 2;
+            this.y = y + this.height / 2;
+
+            this.distanceToPlayer_x = this.x - player.x;
+            this.distanceToPlayer_y = this.y - player.y;
+
+            this.speed = 5;
+
+            this.update = function(){
+                //player is to the left
+                if(this.distanceToPlayer_x < 0){
+                    this.x += Math.abs(this.distanceToPlayer_x) / 40;
+                }
+                else{
+                    this.x -= Math.abs(this.distanceToPlayer_x) / 40;
+                }
+                if(this.distanceToPlayer_y < 0){
+                    this.y += Math.abs(this.distanceToPlayer_y) / 40;
+                }
+                else{
+                    this.y -= Math.abs(this.distanceToPlayer_y) / 40;
+                }
+
+                //handle projectiles going out of bounds of the canvas
+                if(this.x < 0 || this.x > GameArea.context.canvas.width || this.y < 0 || this.y > GameArea.context.canvas.height){
+                    this.active = false;
+                }
+            }
+
+            this.draw = function(){
+                ctx = GameArea.context;
+                ctx.drawImage(laserGreenImage, this.x, this.y, this.width, this.height);
+            }
+        }
+
+        var positions = [ 0, 50, 100, 150, 200, 250, 300, 350, 400 ];
+        function spawnEnemy(){
+
+            var xPos = positions[Math.floor(Math.random()* positions.length)];
+
+            enemies.push(new Enemy(xPos,0));
+        }
+
+        function onTimerTick() {
+            GameArea.frameNumber += 1;
+
+            ctx = GameArea.context;
+
+            ctx.drawImage(backgroundImage,0,0);
+
+            if(gameRunning) {
+
+                text = "Score: " + score;
+                ctx.fillStyle="greenyellow";
+                ctx.font = "20px Arial";
+                ctx.fillText(text, 20, ctx.canvas.height - 20);
+
+                text = "Movement: Arrow Keys Fire: spacebar";
+                ctx.font = "12px Arial";
+                ctx.fillText(text, ctx.canvas.width - ctx.measureText(text).width - 20, ctx.canvas.height - 20);
+
+                if(everyinterval(enemySpawnRate)){
+                    spawnEnemy();
+                }
+
+                //remove inactive entities
+                playerShots = playerShots.filter(
+                    function (shot) {
+                        return shot.active;
+                    }
+                )
+
+                playerShots.forEach(
+                    function (shot) {
+
+                        enemies.forEach(
+                            function (enemy) {
+                                if (collides(shot, enemy)) {
+                                    //enemy was hit by player
+                                    shot.active = false;
+                                    enemy.gotHit();
+                                }
+                            }
+                        )
+                        if (shot.active) {
+                            shot.update();
+                            shot.draw();
+                        }
+                    }
+                )
+
+                //remove inactive entities
+                enemyShots = enemyShots.filter(
+                    function (enemyShot){
+                        return enemyShot.active;
+                    }
+                )
+
+                enemyShots.forEach(
+                    function (shot) {
+
+                        if (collides(shot, player)) {
+                            shot.active = false;
+                            player.gotHit();
+                        }
+
+                        if (shot.active) {
+                            shot.update();
+                            shot.draw();
+                        }
+                    }
+                )
+
+                //remove inactive entities
+                enemies = enemies.filter(
+                    function (enemy) {
+                        return enemy.active;
+                    }
+                )
+
+                enemies.forEach(
+                    function (enemy) {
+                        enemy.update();
+                        enemy.draw();
+                    }
+                )
+
+                player.update();
+                player.draw();
+            }
+            else{
+                if(gameOver){
+                    text = "Game Over - Click to Continue";
+                    ctx.fillStyle = "greenyellow";
+                }
+                else {
+                    text = "Click to Start";
+                    ctx.fillStyle = "white";
+                }
+
+                ctx.font = "30px Impact";
+                ctx.fillText(text, ctx.canvas.width / 2 - ctx.measureText(text).width / 2, ctx.canvas.height / 2);
+            }
+        }
+
+        function processKeyboardInput(e){
+
+            if(gameRunning) {
+                var keyCode = e.keyCode;
+                var type = e.type;
+
+                if (type == "keydown") {
+                    if (keyCode == 37) {
+                        left = true;
+                    }
+                    if (keyCode == 39) {
+                        right = true;
+                    }
+                    if (keyCode == 38) {
+                        up = true;
+                    }
+                    if (keyCode == 40) {
+                        down = true;
+                    }
+                    if (keyCode == 32) {
+                        space = true;
+                    }
+                }
+                else {
+                    if (keyCode == 37) {
+                        left = false;
+                    }
+                    if (keyCode == 39) {
+                        right = false;
+                    }
+                    if (keyCode == 38) {
+                        up = false;
+                    }
+                    if (keyCode == 40) {
+                        down = false;
+                    }
+                    if (keyCode == 32) {
+                        space = false;
+                    }
+                }
+            }
+        }
+
+        function processClickInput(e) {
+
+            if(!gameRunning && !gameOver ) {
+                //initialize game settings
+
+                up = false, down = false, left = false, right = false, space = false;
+                enemies = [];
+                playerShots = [];
+                enemyShots = [];
+                score = 0;
+
+                gameRunning = true;
+                gameOver = false;
+
+                GameArea.createPlayer();
+            }
+            else if(gameOver){
+                gameOver = false;
+            }
+        }
+
+        function collides(object_A, object_B) {
+            return object_A.x < object_B.x + object_B.width &&
+                object_A.x + object_A.width > object_B.x &&
+                object_A.y < object_B.y + object_B.height &&
+                object_A.y + object_A.height > object_B.y;
+        }
+
+    </script>
+</head>
+<body>
+
+</body>
+</html>
